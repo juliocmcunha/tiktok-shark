@@ -63,26 +63,38 @@ export function setupConnection(): void {
     enableExtendedGiftInfo: false,
   } as any);
 
-  connection.on(WebcastEvent.CONNECTED, () => {
+  // A tipagem da lib muda entre versões: o `.on` nem sempre aparece no tipo, e os
+  // eventos de CONTROLE (connected/disconnected/error) ficam em outro enum
+  // (ControlEvent), não no WebcastEvent. Por isso ligamos os eventos por um
+  // emissor com cast e usamos o ControlEvent quando existe, com strings de
+  // fallback. Os eventos de DADOS (gift/like/chat/stream_end) seguem no WebcastEvent.
+  const conn = connection as any;
+  const Control = ((TikTokLive as any).ControlEvent ?? {}) as Record<string, string>;
+  const ON_CONNECTED = Control.CONNECTED ?? 'connected';
+  const ON_DISCONNECTED = Control.DISCONNECTED ?? 'disconnected';
+  const ON_ERROR = Control.ERROR ?? 'error';
+  const ON_STREAM_END = Control.STREAM_END ?? WebcastEvent.STREAM_END;
+
+  conn.on(ON_CONNECTED, () => {
     isConnected = true;
     reconnectAttempts = 0;
     log('Evento: CONNECTED.');
   });
-  connection.on(WebcastEvent.DISCONNECTED, () => {
+  conn.on(ON_DISCONNECTED, () => {
     isConnected = false;
     log('Evento: DISCONNECTED. Tentando reconectar.');
     scheduleReconnect();
   });
-  connection.on(WebcastEvent.STREAM_END, () => {
+  conn.on(ON_STREAM_END, () => {
     isConnected = false;
     log('Evento: STREAM_END (a live foi encerrada).');
     scheduleReconnect();
   });
-  connection.on(WebcastEvent.ERROR, (err: any) => {
+  conn.on(ON_ERROR, (err: any) => {
     log(`Evento: ERROR -> ${errMessage(err?.exception ?? err)}`);
   });
 
-  connection.on(WebcastEvent.GIFT, (data: any) => {
+  conn.on(WebcastEvent.GIFT, (data: any) => {
     const giftType = data?.giftDetails?.giftType ?? data?.giftType;
     if (giftType === 1 && data?.repeatEnd !== true) return;
     emitGift({
@@ -93,14 +105,14 @@ export function setupConnection(): void {
       diamondCount: numOr(data?.giftDetails?.diamondCount ?? data?.diamondCount, 0),
     });
   });
-  connection.on(WebcastEvent.LIKE, (data: any) => {
+  conn.on(WebcastEvent.LIKE, (data: any) => {
     emitLike({
       user: extractUser(data),
       likeCount: numOr(data?.likeCount, 0),
       totalLikeCount: numOr(data?.totalLikeCount, 0),
     });
   });
-  connection.on(WebcastEvent.CHAT, (data: any) => {
+  conn.on(WebcastEvent.CHAT, (data: any) => {
     const comment = typeof data?.comment === 'string' ? data.comment : '';
     if (!comment) return;
     emitChat({ user: extractUser(data), comment });

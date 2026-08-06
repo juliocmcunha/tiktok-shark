@@ -90,11 +90,11 @@ Full walkthrough (script placement, enabling HTTP in Studio, etc.) in
 
 ## Project structure
 
-| File            | Role                                          |
-| --------------- | --------------------------------------------- |
-| `config.ts`     | configuration + environment detection         |
-| `events.ts`     | event queue + emitters                         |
-| `tiktok.ts`     | live connection + auto-reconnect               |
-| `assistant.ts`  | setup assistant (visual/console)               |
-| `server.ts`     | HTTP API + test console + `main()`             |
-| `roblox/`       | the game (Luau) and its tutorial               |
+| Path                 | Role                                     |
+| -------------------- | ---------------------------------------- |
+| `src/config.ts`      | configuration + environment detection    |
+| `src/events.ts`      | event queue + emitters                   |
+| `src/tiktok.ts`      | live connection + auto-reconnect         |
+| `src/assistant.ts`   | setup assistant (visual/console)         |
+| `src/server.ts`      | HTTP API + test console + `main()`       |
+| `roblox/`            | the game (Luau) and its tutorial         |
