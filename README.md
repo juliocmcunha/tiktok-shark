@@ -1,142 +1,100 @@
-# TikTok LIVE → Roblox Bridge (Node.js + TypeScript)
+# TikTok LIVE → Roblox Bridge
 
-Servidor intermediário que escuta os eventos de uma live do TikTok (presentes,
-curtidas e comentários) e os disponibiliza para um jogo no Roblox via polling HTTP.
+An intermediary server that captures TikTok LIVE events (gifts, likes, chat) and
+delivers them to a Roblox game via HTTP polling.
 
 ```
-[TikTok LIVE] ──▶ [Servidor Node.js (este projeto)] ◀── GET /api/events ── [Roblox (Luau)]
+[TikTok LIVE] → [Node.js server] ← HTTP polling ← [Roblox]
 ```
 
-## Requisitos
+## Requirements
 
-- Node.js **18+**
-- Uma conta do TikTok que esteja **ao vivo** no momento do teste
-  (a conexão só é estabelecida enquanto a pessoa está transmitindo).
+- Node.js **18+** (20 or 22 recommended)
+- (optional) **Bun** — only needed to build the single-file `.exe`
 
-## Instalação
+## Installation
 
 ```bash
+git clone <YOUR-REPO-URL>
+cd tiktok-roblox-bridge
 npm install
+```
+
+## Configuration
+
+On first run the program **configures itself**, detecting the environment:
+
+- **Windows / macOS:** opens a **browser** page (visual form).
+- **Terminal only:** asks in the **console**.
+
+It prompts for the TikTok username, the API key (it can **generate one for you**),
+the port, and whether to run in test mode, then writes the `.env` **next to the
+executable**. No manual file editing required.
+
+Prefer to configure by hand? Copy the example and edit it:
+
+```bash
 cp .env.example .env
-# edite o .env e preencha TIKTOK_USERNAME e API_SECRET_KEY
+# set TIKTOK_USERNAME and API_SECRET_KEY
 ```
 
-Gere uma chave secreta forte:
+## Running
 
 ```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-## Como rodar
-
-Desenvolvimento (recarrega ao salvar, roda o `.ts` direto com `tsx`):
-
-```bash
+# development (reloads on save)
 npm run dev
-```
 
-Produção (compila para `dist/` e roda com `node`):
-
-```bash
+# production (build, then run)
 npm run build
 npm start
-```
 
-Só checar a tipagem, sem gerar arquivos:
-
-```bash
+# type-check only, without running
 npm run typecheck
 ```
 
-## Endpoints
+## Building the executable (.exe)
 
-### `GET /health` (público)
+With **Bun** installed:
 
-Sem autenticação. Útil para monitorar o processo.
-
-```json
-{
-  "status": "ok",
-  "username": "nomedousuario",
-  "liveConnected": true,
-  "queued": 3,
-  "uptimeSeconds": 142
-}
+```bash
+npm run exe:bun
 ```
 
-### `GET /api/events` (protegido)
+Produces `tiktok-server` (or `tiktok-server.exe` on Windows): a single binary that
+runs **without Node**. The `.env` lives in the same folder as the executable.
+Alternatives and details in [`BUILDING.md`](./BUILDING.md).
 
-Exige o header `x-api-key` igual ao `API_SECRET_KEY` do `.env`.
-Retorna os eventos acumulados **e limpa a fila na hora** — cada evento é
-entregue uma única vez.
+## Test mode (no live needed)
 
-Requisição:
+Enable test mode in the configuration (or `SIMULATE_ONLY=true`) and generate events
+from the console — they go into the same queue Roblox reads:
 
 ```
-GET /api/events
-x-api-key: SUA_CHAVE
+gift Rose 5 1 @someuser
+like 50
+chat @another let's go!
 ```
 
-Resposta:
+Handy commands: `config`, `set <key> <value>`, `setup`, `status`, `help`.
 
-```json
-{
-  "count": 2,
-  "serverTime": "2026-07-28T12:00:00.000Z",
-  "events": [
-    {
-      "id": 41,
-      "type": "gift",
-      "timestamp": "2026-07-28T11:59:59.500Z",
-      "user": { "uniqueId": "fulano", "nickname": "Fulano", "userId": "123" },
-      "giftId": 5655,
-      "giftName": "Rose",
-      "repeatCount": 3,
-      "diamondCount": 1
-    },
-    {
-      "id": 42,
-      "type": "chat",
-      "timestamp": "2026-07-28T12:00:00.100Z",
-      "user": { "uniqueId": "ciclano", "nickname": "Ciclano", "userId": "456" },
-      "comment": "vamooo!"
-    }
-  ]
-}
-```
+## Connecting Roblox
 
-Formatos por `type`:
+Roblox **cannot reach `localhost`** — expose the server (e.g. `ngrok http 3000`)
+and set the following in `roblox/Config.luau`:
 
-- `gift`  → `giftId`, `giftName`, `repeatCount`, `diamondCount`
-- `like`  → `likeCount`, `totalLikeCount`
-- `chat`  → `comment`
+- `ServerUrl` = the server's public URL
+- `ApiKey` = the same `API_SECRET_KEY` as the server
 
-Sem `x-api-key` válido: `401 { "error": "Unauthorized" }`.
+Full walkthrough (script placement, enabling HTTP in Studio, etc.) in
+[`roblox/TUTORIAL.md`](./roblox/TUTORIAL.md).
 
-## Detalhes de implementação
+## Project structure
 
-- **Reconexão automática** com backoff exponencial + jitter (teto configurável).
-  Se o usuário não estiver ao vivo, o servidor segue tentando periodicamente.
-- **Dedup de presentes em streak**: presentes "streakable" (`giftType === 1`)
-  só entram na fila quando a streak termina (`repeatEnd`), evitando duplicatas.
-- **Fila com teto** (`MAX_QUEUE_SIZE`): se o Roblox parar de fazer polling, os
-  eventos mais antigos são descartados para não estourar a memória.
-- **Comparação de chave em tempo constante** (`crypto.timingSafeEqual`).
-
-## Sobre limites de taxa (EulerStream)
-
-A `tiktok-live-connector` v2 usa um serviço de assinatura (EulerStream) para
-estabelecer a conexão. O tier gratuito tem limites de requisição. Para uso mais
-intenso/estável, crie uma chave em https://www.eulerstream.com e defina
-`SIGN_API_KEY` no `.env`.
-
-## Lado do Roblox (resumo)
-
-No Roblox, use `HttpService` em um `Script` no lado do servidor para fazer
-polling (ex.: a cada 1–2s) enviando o header `x-api-key`, e reaja a cada evento
-retornado. Lembre de habilitar *"Allow HTTP Requests"* nas configurações do jogo.
-
-## Aviso
-
-Esta biblioteca acessa dados da live de forma não-oficial. Respeite os Termos de
-Serviço do TikTok e as regras da plataforma Roblox no seu uso.
+| File            | Role                                          |
+| --------------- | --------------------------------------------- |
+| `config.ts`     | configuration + environment detection         |
+| `events.ts`     | event queue + emitters                         |
+| `tiktok.ts`     | live connection + auto-reconnect               |
+| `assistant.ts`  | setup assistant (visual/console)               |
+| `server.ts`     | HTTP API + test console + `main()`             |
+| `roblox/`       | the game (Luau) and its tutorial               |
